@@ -1168,9 +1168,13 @@
       const submitBtn = btns.find(b => b.innerText && (b.innerText.includes('Submit') || b.innerText.includes('Finish')));
       
       if (nextBtn) {
+        nextBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+        nextBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
         nextBtn.click();
         return 'next';
       } else if (submitBtn) {
+        submitBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+        submitBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
         submitBtn.click();
         return 'submitted';
       }
@@ -1739,15 +1743,15 @@
           parentLabel.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
           parentLabel.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
           parentLabel.click();
-        } else {
-          // Fallback: click the input directly
-          inp.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-          inp.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
-          inp.click();
         }
+        
+        // Always try to click the input itself directly to be absolutely sure
+        inp.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+        inp.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+        inp.click();
 
         // Ensure state updates in React if synthetic click wasn't captured
-        if (inp.type === 'checkbox' && !inp.checked) {
+        if (!inp.checked) {
             const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'checked')?.set;
             if (nativeSetter) {
                 nativeSetter.call(inp, true);
