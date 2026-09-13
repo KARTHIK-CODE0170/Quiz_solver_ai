@@ -63,7 +63,7 @@
             return;
         }
 
-        const RESPONSE_SELS = ['.cib-message-main', 'cib-message', '.ac-textBlock'];
+        const RESPONSE_SELS = ['.cib-message-main', 'cib-message', '.ac-textBlock', 'div[data-message-author="bot"]', 'div[data-testid="message-content"]', '.message-content', 'div[class*="messageBlock"]', 'div[class*="botMessage"]', '.chat-message', '[data-testid="message"]', 'div.markdown-body'];
 
         function getAllResponseEls() {
             let all = [];
