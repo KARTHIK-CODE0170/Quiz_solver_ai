@@ -680,8 +680,7 @@
                   if (Object.keys(screenshotMap).length > 0) promptLines.push('IMPORTANT: Some questions include images/screenshots attached.');
                   promptLines.push('Rules: Single-choice (1 letter), Multi-select (all correct letters), Open-ended (raw number or short text).');
                   promptLines.push('CRITICAL JSON RULES: Output ONLY raw JSON. No markdown fences. No explanation.');
-                  promptLines.push('OUTPUT FORMAT:
-{"answers": [{"q": 1, "a": ["A"]}]}');
+                  promptLines.push('OUTPUT FORMAT:\\n{"answers": [{"q": 1, "a": ["A"]}]}');
                   promptLines.push('--- ITEMS ---');
                   blockMeta.forEach(({ q, type, opts }, i) => {
                       promptLines.push(`Q${i + 1} ${type === 'checkbox' ? '[MULTI-SELECT]' : type === 'text' ? '[OPEN-ENDED]' : '[SINGLE-CHOICE]'}: ${q}`);
@@ -689,8 +688,7 @@
                   });
                   promptLines.push('FINAL INSTRUCTION: Generate only JSON.');
                   
-                  const prompt = promptLines.join('
-');
+                  const prompt = promptLines.join('\\n');
                   const taskId = Date.now().toString();
                   const screenshots = Object.entries(screenshotMap).map(([q, dataUrl]) => ({ q: parseInt(q), dataUrl }));
                   
