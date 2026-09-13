@@ -324,11 +324,21 @@
 
       if (type === 'text') {
         const result = { answers: [], reasoning: letters[0] || '', suggestedText: letters[0] || '', confidence: 88 };
-        showAnswer(block, result, [], 'text', aiName);
+        await showAnswer(block, result, [], 'text', aiName);
       } else {
-        const validLetters = letters.map(l => String(l).toUpperCase()).filter(l => /^[A-H]$/.test(l));
+        let validLetters = letters.map(l => String(l).toUpperCase()).filter(l => /^[A-H]$/.test(l));
+        
+        // Fallback: If AI returned a word instead of a letter (like "Tuesday"), try to match it against options
+        if (validLetters.length === 0 && letters.length > 0 && opts && opts.length > 0) {
+            const rawAns = String(letters[0]).trim().toLowerCase();
+            const matchIdx = opts.findIndex(o => o.toLowerCase().includes(rawAns) || rawAns.includes(o.toLowerCase()));
+            if (matchIdx !== -1) {
+                validLetters = [String.fromCharCode(65 + matchIdx)];
+            }
+        }
+        
         const result = { answers: validLetters.length ? validLetters : ['A'], reasoning: `Via ${aiName}`, confidence: 92 };
-        showAnswer(block, result, opts, type, aiName);
+        await showAnswer(block, result, opts, type, aiName);
       }
     }
   }
@@ -1645,9 +1655,9 @@
     b.prepend(d);
   }
 
-  function showAnswer(block, result, options, type, aiName) {
+  async function showAnswer(block, result, options, type, aiName) {
     clearBadge(block);
-    autoSelect(block, result, type);
+    await autoSelect(block, result, type);
 
     // Highlight selected option rows
     if (type !== 'text') {
@@ -1707,7 +1717,7 @@
     block.prepend(badge);
   }
 
-  function autoSelect(block, result, type) {
+  async function autoSelect(block, result, type) {
     if (type === 'text') {
       // Priority 1: "Enter answer here" — the specific fill-in-blank Coursera input
       // Priority 2: Any other input[type="text"]
@@ -1764,7 +1774,7 @@
     }
     // MCQ / checkbox — use the parent label as the click target (required for new Coursera UI)
     const inputs = [...block.querySelectorAll('input[type="radio"],input[type="checkbox"]')];
-    result.answers.forEach(l => {
+    for (const l of result.answers) {
       const inp = inputs[l.charCodeAt(0) - 65];
       if (!inp) return;
       if (inp.type === 'radio' || !inp.checked) {
@@ -1775,14 +1785,10 @@
         }
         
         if (parentLabel) {
-          parentLabel.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-          parentLabel.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
-          parentLabel.click();
+          await interactAggressively(parentLabel);
         } else {
           // Fallback: click the input directly
-          inp.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-          inp.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
-          inp.click();
+          await interactAggressively(inp);
         }
 
         // Ensure state updates in React if synthetic click wasn't captured
@@ -1796,7 +1802,7 @@
             inp.dispatchEvent(new Event('change', { bubbles: true }));
         }
       }
-    });
+    }
   }
 
   // ════════════════════════════════════════════════════════════════════════════
