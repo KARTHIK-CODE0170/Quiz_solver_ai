@@ -104,38 +104,27 @@
         }
         
         if (!sendBtn || sendBtn.disabled) {
-            console.warn('[QuizAI Bridge] Failed to enable send button. Firing native Enter.');
-            inputEl.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, which: 13, bubbles: true, composed: true }));
+            console.warn('[QuizAI Bridge] Failed to enable send button. Firing highly aggressive Enter sequence.');
+            const enterEvents = [
+                new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, composed: true }),
+                new KeyboardEvent('keypress', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, composed: true }),
+                new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, composed: true })
+            ];
+            for (const ev of enterEvents) inputEl.dispatchEvent(ev);
+            
+            // Also try finding ANY button inside the input container
+            const altSendBtn = document.querySelector('.send-button, button[aria-label*="Send"]');
+            if (altSendBtn) altSendBtn.click();
         }
-console.log('[QuizAI Bridge] Message sent. Waiting for NEW response elements...');
-        await delay(3000);
-
-        // Wait for a NEW response element to appear
-        const newEls = await waitFor(
-            () => {
-                const all = getAllResponseEls();
-                if (all.length > baselineCount) return all;
-                return null;
-            },
-            60000
-        );
-
-        if (!newEls) {
-            await storeError('Gemini did not generate a response in time. Try again.');
-            return;
-        }
-
-        console.log('[QuizAI Bridge] New response text detected.');
+console.log('[QuizAI Bridge] Message sent. Polling page for JSON response...');
 
         // Wait for Gemini's streaming to finish (stable text)
+        // We scan the ENTIRE body text to completely bypass Angular DOM selector brittleness.
         const responseText = await waitForStableText(() => {
-            const all = getAllResponseEls();
-            if (!all.length) return '';
-            const last = all[all.length - 1];
-            return (last.innerText || last.textContent || '').trim();
+            return document.body.innerText;
         }, 120000);
 
-        if (!responseText.trim()) {
+        if (!responseText || !responseText.trim()) {
             await storeError('Gemini response was empty. Try again.');
             return;
         }
