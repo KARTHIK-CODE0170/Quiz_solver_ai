@@ -180,53 +180,53 @@
 
     // For single page auto-solver (Peer Review) start immediately if already there
     if (targetPhase === 'peer_review' && isPeerReviewPage) {
-        await setState({ active: true, phase: 'peer_review', courseSlug });
-        location.reload();
-        return;
+      await setState({ active: true, phase: 'peer_review', courseSlug });
+      location.reload();
+      return;
     }
 
     if (targetPhase === 'quiz_single' && isQuizPage) {
-        await setState({ active: true, phase: 'quiz', courseSlug, quizUrls: [location.href], currentIndex: 0 });
-        location.reload();
-        return;
+      await setState({ active: true, phase: 'quiz', courseSlug, quizUrls: [location.href], currentIndex: 0 });
+      location.reload();
+      return;
     }
 
     if (targetPhase === 'collect_quizzes') {
-        if (isAdityaPlatform) {
-            await setState({ active: true, phase: 'collect_quizzes', courseSlug: 'aditya', quizUrls: [], currentIndex: 0 });
-            setStatus('Scanning for quizzes...');
-            await collectQuizzes(await getState());
-        } else {
-            await setState({ active: true, phase: 'collect_quizzes', courseSlug, quizUrls: [], currentIndex: 0 });
-            setStatus('Going to assignments...');
-            await delay(400);
-            location.href = `https://www.coursera.org/learn/${courseSlug}/home/assignments`;
-        }
-        return;
+      if (isAdityaPlatform) {
+        await setState({ active: true, phase: 'collect_quizzes', courseSlug: 'aditya', quizUrls: [], currentIndex: 0 });
+        setStatus('Scanning for quizzes...');
+        await collectQuizzes(await getState());
+      } else {
+        await setState({ active: true, phase: 'collect_quizzes', courseSlug, quizUrls: [], currentIndex: 0 });
+        setStatus('Going to assignments...');
+        await delay(400);
+        location.href = `https://www.coursera.org/learn/${courseSlug}/home/assignments`;
+      }
+      return;
     }
 
     // Default: Quiz Collector Pipeline
     if (isAdityaPlatform) {
-        await setState({
-          active: true,
-          phase: 'collect',
-          courseSlug: 'aditya',
-          quizUrls: [],
-          currentIndex: 0,
-        });
-        setStatus('Scanning for quizzes...');
-        await collectQuizzes(await getState());
+      await setState({
+        active: true,
+        phase: 'collect',
+        courseSlug: 'aditya',
+        quizUrls: [],
+        currentIndex: 0,
+      });
+      setStatus('Scanning for quizzes...');
+      await collectQuizzes(await getState());
     } else {
-        await setState({
-          active: true,
-          phase: 'collect',
-          courseSlug,
-          quizUrls: [],
-          currentIndex: 0,
-        });
-        setStatus('Going to assignments...');
-        await delay(400);
-        location.href = `https://www.coursera.org/learn/${courseSlug}/home/assignments`;
+      await setState({
+        active: true,
+        phase: 'collect',
+        courseSlug,
+        quizUrls: [],
+        currentIndex: 0,
+      });
+      setStatus('Going to assignments...');
+      await delay(400);
+      location.href = `https://www.coursera.org/learn/${courseSlug}/home/assignments`;
     }
   }
 
@@ -269,7 +269,10 @@
     for (const candidate of [...candidates].reverse()) {
       try {
         const p = JSON.parse(candidate);
-        if (Array.isArray(p.answers) && p.answers.length) return p.answers;
+        if (Array.isArray(p.answers) && p.answers.length) {
+          const isDummy = p.answers.some(ans => ans.q === 999 || (Array.isArray(ans.a) && ans.a.includes('EXAMPLE')));
+          if (!isDummy) return p.answers;
+        }
       } catch { /* try next */ }
     }
 
@@ -284,7 +287,10 @@
             return ': "' + fixed + '"';
           });
         const p = JSON.parse(sanitized);
-        if (Array.isArray(p.answers) && p.answers.length) return p.answers;
+        if (Array.isArray(p.answers) && p.answers.length) {
+          const isDummy = p.answers.some(ans => ans.q === 999 || (Array.isArray(ans.a) && ans.a.includes('EXAMPLE')));
+          if (!isDummy) return p.answers;
+        }
       } catch { /* try next */ }
     }
 
@@ -292,19 +298,19 @@
     const result = [];
     const blocks = text.split(/(?:(?:\*\*|^|\n)\s*(?:Q|Question)\s*(\d+)[:.)\s])/i);
     for (let i = 1; i < blocks.length; i += 2) {
-        const q = parseInt(blocks[i]);
-        const content = blocks[i + 1] || '';
-        const letterMatches = [...content.matchAll(/(?:^|\n)\s*(?:[-*]\s*)?(?:\*\*)?([A-H])(?:\*\*|[.)])\s+/g)];
-        if (letterMatches.length > 0) {
-            const letters = letterMatches.map(m => m[1].toUpperCase());
-            result.push({ q, a: [...new Set(letters)] });
-        } else {
-            let txt = content;
-            const ansMatch = content.match(/Answer\s*:\s*([\s\S]+?)(?:\n\nExplanation|\n\n$|$)/i);
-            if (ansMatch) txt = ansMatch[1];
-            txt = txt.replace(/\*/g, '').trim();
-            if (txt.length > 2) result.push({ q, a: [txt] });
-        }
+      const q = parseInt(blocks[i]);
+      const content = blocks[i + 1] || '';
+      const letterMatches = [...content.matchAll(/(?:^|\n)\s*(?:[-*]\s*)?(?:\*\*)?([A-H])(?:\*\*|[.)])\s+/g)];
+      if (letterMatches.length > 0) {
+        const letters = letterMatches.map(m => m[1].toUpperCase());
+        result.push({ q, a: [...new Set(letters)] });
+      } else {
+        let txt = content;
+        const ansMatch = content.match(/Answer\s*:\s*([\s\S]+?)(?:\n\nExplanation|\n\n$|$)/i);
+        if (ansMatch) txt = ansMatch[1];
+        txt = txt.replace(/\*/g, '').trim();
+        if (txt.length > 2) result.push({ q, a: [txt] });
+      }
     }
     return result;
 
@@ -312,8 +318,10 @@
 
   async function applyWebUiAnswers(blockMeta, aiAnswers, aiName) {
     const answerMap = {};
-    for (const item of aiAnswers) {
-      answerMap[item.q] = item.a || [];
+    for (const item of (aiAnswers || [])) {
+      if (item && item.q !== undefined) {
+        answerMap[item.q] = item.a || [];
+      }
     }
 
     for (let i = 0; i < blockMeta.length; i++) {
@@ -326,19 +334,45 @@
         const result = { answers: [], reasoning: letters[0] || '', suggestedText: letters[0] || '', confidence: 88 };
         await showAnswer(block, result, [], 'text', aiName);
       } else {
-        let validLetters = letters.map(l => String(l).toUpperCase()).filter(l => /^[A-H]$/.test(l));
-        
-        // Fallback: If AI returned a word instead of a letter (like "Tuesday"), try to match it against options
-        if (validLetters.length === 0 && letters.length > 0 && opts && opts.length > 0) {
-            const rawAns = String(letters[0]).trim().toLowerCase();
-            const matchIdx = opts.findIndex(o => o.toLowerCase().includes(rawAns) || rawAns.includes(o.toLowerCase()));
-            if (matchIdx !== -1) {
-                validLetters = [String.fromCharCode(65 + matchIdx)];
+        let validLetters = [];
+        for (const rawL of letters) {
+          const s = String(rawL).trim().toUpperCase();
+          if (/^[A-H]$/.test(s)) {
+            validLetters.push(s);
+          } else {
+            // Extract single letter from patterns like "Option C", "C.", "(C)", "C - ...", "Choice C", "Answer: C"
+            const match = s.match(/(?:^|\b|\()(?:OPTION|CHOICE|ANSWER)?\s*([A-H])(?:\b|\.|\)|\:|\-|\s|$)/i);
+            if (match) {
+              validLetters.push(match[1].toUpperCase());
             }
+          }
         }
-        
-        const result = { answers: validLetters.length ? validLetters : ['A'], reasoning: `Via ${aiName}`, confidence: 92 };
-        await showAnswer(block, result, opts, type, aiName);
+        validLetters = [...new Set(validLetters)];
+
+        // Fallback: If AI returned a word / text instead of a letter (like "Tuesday"), try to match it against options
+        if (validLetters.length === 0 && letters.length > 0 && opts && opts.length > 0) {
+          for (const rawAns of letters) {
+            const rawClean = String(rawAns).trim().toLowerCase().replace(/^[a-h][\.\)]\s*/i, '');
+            if (!rawClean) continue;
+
+            const matchIdx = opts.findIndex(o => {
+              const optClean = o.toLowerCase().replace(/^[a-h][\.\)]\s*/i, '').trim();
+              return optClean.includes(rawClean) || rawClean.includes(optClean);
+            });
+
+            if (matchIdx !== -1) {
+              validLetters.push(String.fromCharCode(65 + matchIdx));
+              break;
+            }
+          }
+        }
+
+        if (validLetters.length > 0) {
+          const result = { answers: validLetters, reasoning: `Via ${aiName}`, confidence: 92 };
+          await showAnswer(block, result, opts, type, aiName);
+        } else {
+          showError(block, `${aiName} provided option text that could not be matched`);
+        }
       }
     }
   }
@@ -366,8 +400,8 @@
 
       const txt = (a.innerText || a.textContent || '').trim().replace(/\s+/g, ' ');
       const isReview = /review\s+\d+\s+peer/i.test(txt) ||
-                       href.includes('give-feedback') ||
-                       href.includes('review-next');
+        href.includes('give-feedback') ||
+        href.includes('review-next');
       const isSubmit = /submit\s+your\s+assignment/i.test(txt) && !isReview;
 
       if (isSubmit && !peerLinkMap[key].submitLink) {
@@ -473,35 +507,35 @@
     const urls = [];
     const allLinks = [...document.querySelectorAll('a')];
     allLinks.forEach(a => {
-        const href = a.href || '';
-        // Look for quiz or exam links
-        if (href.includes('/quiz/') || href.includes('/exam/') || href.includes('/assignment-submission/')) {
-            // Find container to check if it's already done
-            const row = findRowContainer(a);
-            if (row && isRowCompleted(row)) {
-                console.log('[QuizAI] Skipping completed quiz:', href);
-                return;
-            }
-
-            // Check if this quiz was previously failed
-            let forceClaude = false;
-            if (row && (row.innerText || '').toLowerCase().includes("didn't pass")) {
-                forceClaude = true;
-                console.log('[QuizAI] Found broken/failed quiz, forcing Claude:', href);
-            }
-
-            // push an object instead of string so it can carry forceClaude flag
-            const exists = urls.some(u => (typeof u === 'string' ? u : u.url) === href);
-            if (!exists) {
-                urls.push(forceClaude ? { url: href, forceClaude: true } : href);
-            }
+      const href = a.href || '';
+      // Look for quiz or exam links
+      if (href.includes('/quiz/') || href.includes('/exam/') || href.includes('/assignment-submission/')) {
+        // Find container to check if it's already done
+        const row = findRowContainer(a);
+        if (row && isRowCompleted(row)) {
+          console.log('[QuizAI] Skipping completed quiz:', href);
+          return;
         }
+
+        // Check if this quiz was previously failed
+        let forceClaude = false;
+        if (row && (row.innerText || '').toLowerCase().includes("didn't pass")) {
+          forceClaude = true;
+          console.log('[QuizAI] Found broken/failed quiz, forcing Claude:', href);
+        }
+
+        // push an object instead of string so it can carry forceClaude flag
+        const exists = urls.some(u => (typeof u === 'string' ? u : u.url) === href);
+        if (!exists) {
+          urls.push(forceClaude ? { url: href, forceClaude: true } : href);
+        }
+      }
     });
 
     if (!urls.length) {
-        setStatus('✅ No pending quizzes found!');
-        await clearState();
-        return;
+      setStatus('✅ No pending quizzes found!');
+      await clearState();
+      return;
     }
 
     setStatus(`Found ${urls.length} pending quizzes. Starting...`);
@@ -564,290 +598,290 @@
   // ════════════════════════════════════════════════════════════════════════════
   //  PHASE 2: Auto-solve and submit one quiz
   // ════════════════════════════════════════════════════════════════════════════
-  
+
   // ════════════════════════════════════════════════════════════════════════════
   //  STATE MACHINE RUNTIME & DIAGNOSTICS
   // ════════════════════════════════════════════════════════════════════════════
   function logDiagnostic(context, msg) {
-      console.log(`[QuizAI] [${context}] ${msg}`);
-      setStatus(`[${context}] ${msg}`);
+    console.log(`[QuizAI] [${context}] ${msg}`);
+    setStatus(`[${context}] ${msg}`);
   }
 
   async function interactAggressively(element) {
-      if (!element) return false;
-      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      await delay(100);
-      try { element.focus(); } catch(e){}
-      element.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, cancelable: true }));
-      element.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-      element.dispatchEvent(new MouseEvent('pointerup', { bubbles: true, cancelable: true }));
-      element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
-      element.click();
-      return true;
+    if (!element) return false;
+    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    await delay(100);
+    try { element.focus(); } catch (e) { }
+    element.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, cancelable: true }));
+    element.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    element.dispatchEvent(new MouseEvent('pointerup', { bubbles: true, cancelable: true }));
+    element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+    element.click();
+    return true;
   }
 
   async function verifyNavigation(expectedHash, maxMs = 8000) {
-      return new Promise(resolve => {
-          let elapsed = 0;
-          const id = setInterval(() => {
-              const blocks = findBlocks();
-              if (blocks.length > 0) {
-                  const currentHash = getQuestion(blocks[0])?.slice(0, 50) || '';
-                  if (currentHash && currentHash !== expectedHash) {
-                      clearInterval(id);
-                      resolve(true); // Navigation successful
-                      return;
-                  }
-              }
-              const isGradingActive = document.querySelectorAll('input[type="radio"]').length === 0;
-              if (isGradingActive && document.body.innerText.includes('Done')) {
-                  clearInterval(id);
-                  resolve(true); // Passed quiz completely
-                  return;
-              }
-              elapsed += 500;
-              if (elapsed > maxMs) {
-                  clearInterval(id);
-                  resolve(false);
-              }
-          }, 500);
-      });
+    return new Promise(resolve => {
+      let elapsed = 0;
+      const id = setInterval(() => {
+        const blocks = findBlocks();
+        if (blocks.length > 0) {
+          const currentHash = getQuestion(blocks[0])?.slice(0, 50) || '';
+          if (currentHash && currentHash !== expectedHash) {
+            clearInterval(id);
+            resolve(true); // Navigation successful
+            return;
+          }
+        }
+        const isGradingActive = document.querySelectorAll('input[type="radio"]').length === 0;
+        if (isGradingActive && document.body.innerText.includes('Done')) {
+          clearInterval(id);
+          resolve(true); // Passed quiz completely
+          return;
+        }
+        elapsed += 500;
+        if (elapsed > maxMs) {
+          clearInterval(id);
+          resolve(false);
+        }
+      }, 500);
+    });
   }
 
   async function autoSolveAndSubmit(state) {
-      const total = state.quizUrls.length;
-      const idx = state.currentIndex;
-      
-      let smState = 'READING_QUESTION';
-      let retryCount = 0;
-      const MAX_RETRIES = 3;
-      let currentQHash = '';
-      let isClaudeForced = typeof state.quizUrls[idx] === 'object' && state.quizUrls[idx].forceClaude;
-      let aiChoice = 'gemini'; // default
-      let bgMode = false;
-      
-      logDiagnostic('INIT', `Starting State Machine for Quiz ${idx + 1} of ${total}`);
-      
-      const isNativeRetry = await clickStartButton();
-      if (isNativeRetry && !isClaudeForced) {
-          logDiagnostic('INIT', 'Native retry override detected. Upgrading to Claude.');
-          isClaudeForced = true;
-      }
-      
-      while (smState !== 'COMPLETE' && smState !== 'ERROR') {
-          logDiagnostic('STATE', `Transition -> ${smState}`);
-          
-          switch (smState) {
-              case 'READING_QUESTION': {
-                  await waitFor(() => findBlocks().length > 0, 12000);
-                  await delay(800); 
-                  const blocks = findBlocks();
-                  if (!blocks.length) {
-                      logDiagnostic('MAYA', 'No questions found in DOM.');
-                      smState = 'ERROR';
-                      break;
-                  }
-                  
-                  currentQHash = getQuestion(blocks[0])?.slice(0, 50) || '';
-                  if (answered.has(currentQHash)) {
-                      logDiagnostic('MAYA', 'Question already answered in memory. Attempting to force Next.');
-                      smState = 'NAVIGATING';
-                      break;
-                  }
-                  smState = 'REQUESTING_AI';
-                  break;
-              }
-              
-              case 'REQUESTING_AI': {
-                  // Fetch preferences
-                  const prefs = await new Promise(r => chrome.storage.local.get(['preferredAI', 'backgroundMode'], d => r(d)));
-                  aiChoice = isClaudeForced ? 'claude' : (prefs.preferredAI || 'gemini');
-                  bgMode = prefs.backgroundMode || false;
-                  
-                  // Setup payload
-                  const TASK_KEY = aiChoice === 'claude' ? 'cqsClaudeTask' : (aiChoice === 'copilot' ? 'cqsCopilotTask' : (aiChoice === 'gemini' ? 'cqsGeminiTask' : 'cqsChatGptTask'));
-                  const OPEN_MSG = aiChoice === 'claude' ? 'OPEN_CLAUDE_TAB' : (aiChoice === 'copilot' ? 'OPEN_COPILOT_TAB' : (aiChoice === 'gemini' ? 'OPEN_GEMINI_TAB' : 'OPEN_CHATGPT_TAB'));
-                  
-                  const blocks = findBlocks();
-                  const blockMeta = [];
-                  const screenshotMap = {};
-                  
-                  for (let i = 0; i < blocks.length; i++) {
-                      const block = blocks[i];
-                      const q = getQuestion(block);
-                      const type = getType(block);
-                      const opts = type !== 'text' ? getOptions(block) : [];
-                      blockMeta.push({ block, q, type, opts });
-                      
-                      if (hasVisualContent(block)) {
-                          logDiagnostic('MAYA', `Extracting visual content for Q${i+1}`);
-                          const dataUrl = await captureBlockScreenshot(block);
-                          if (dataUrl) screenshotMap[i+1] = dataUrl;
-                      }
-                  }
-                  
-                  let promptLines = ['Analyze the following educational items and extract the most factually accurate option(s) for each.'];
-                  if (Object.keys(screenshotMap).length > 0) promptLines.push('IMPORTANT: Some questions include images/screenshots attached.');
-                  promptLines.push('Rules: Single-choice (1 letter), Multi-select (all correct letters), Open-ended (raw number or short text).');
-                  promptLines.push('CRITICAL JSON RULES: Output ONLY raw JSON. No markdown fences. No explanation.');
-                  promptLines.push('OUTPUT FORMAT:\\n{"answers": [{"q": 999, "a": ["EXAMPLE"]}]}');
-                  promptLines.push('--- ITEMS ---');
-                  blockMeta.forEach(({ q, type, opts }, i) => {
-                      promptLines.push(`Q${i + 1} ${type === 'checkbox' ? '[MULTI-SELECT]' : type === 'text' ? '[OPEN-ENDED]' : '[SINGLE-CHOICE]'}: ${q}`);
-                      if (opts.length) opts.forEach((o, j) => promptLines.push(`  ${String.fromCharCode(65 + j)}. ${o}`));
-                  });
-                  promptLines.push('FINAL INSTRUCTION: Generate only JSON.');
-                  
-                  const prompt = promptLines.join('\\n');
-                  const taskId = Date.now().toString();
-                  const screenshots = Object.entries(screenshotMap).map(([q, dataUrl]) => ({ q: parseInt(q), dataUrl }));
-                  
-                  const ANSWER_KEY = aiChoice === 'claude' ? 'cqsClaudeAnswers' : (aiChoice === 'copilot' ? 'cqsCopilotAnswers' : (aiChoice === 'gemini' ? 'cqsGeminiAnswers' : 'cqsChatGptAnswers'));
-                  await chrome.storage.local.remove([ANSWER_KEY]);
-                  await chrome.storage.local.set({ [TASK_KEY]: { prompt, taskId, timestamp: Date.now(), screenshots } });
-                  
-                  chrome.runtime.sendMessage({ type: OPEN_MSG, background: bgMode });
-                  
-                  window.currentBlockMeta = blockMeta;
-                  window.currentAnswerKey = ANSWER_KEY;
-                  smState = 'WAITING_FOR_AI';
-                  break;
-              }
-              
-              case 'WAITING_FOR_AI': {
-                  logDiagnostic('AI', `Waiting up to 3 mins for ${aiChoice}...`);
-                  const deadline = Date.now() + 180000;
-                  let success = false;
-                  
-                  while (Date.now() < deadline) {
-                      await delay(2000);
-                      const stored = await new Promise(r => chrome.storage.local.get([window.currentAnswerKey, 'cqsBridgeStatus'], d => r(d)));
-                      if (stored[window.currentAnswerKey]) {
-                          const ansData = stored[window.currentAnswerKey];
-                          if (ansData.error) {
-                              logDiagnostic('AI', `Error: ${ansData.error}`);
-                              break;
-                          }
-                          const hasAnswers = Array.isArray(ansData.answers) && ansData.answers.length > 0;
-                          const hasRawText = ansData.rawText && ansData.rawText.length > 10;
-                          
-                          if (hasAnswers || hasRawText) {
-                              window.currentAiAnswers = hasAnswers ? ansData.answers : parseRawText(ansData.rawText);
-                              if (window.currentAiAnswers.length > 0) {
-                                  success = true;
-                              }
-                          }
-                          break;
-                      }
-                  }
-                  
-                  if (success) {
-                      logDiagnostic('AI', `Response obtained successfully.`);
-                      await chrome.storage.local.remove([window.currentAnswerKey]);
-                      smState = 'SELECTING_ANSWER';
-                  } else {
-                      logDiagnostic('AI', 'Timed out or failed. Falling back to Claude.');
-                      if (aiChoice !== 'claude') {
-                          isClaudeForced = true;
-                          smState = 'REQUESTING_AI';
-                      } else {
-                          smState = 'ERROR';
-                      }
-                  }
-                  break;
-              }
-              
-              case 'SELECTING_ANSWER': {
-                  logDiagnostic('MAYA', 'Applying answers to UI.');
-                  await applyWebUiAnswers(window.currentBlockMeta, window.currentAiAnswers, aiChoice);
-                  answered.set(currentQHash, true);
-                  await checkHonorCode();
-                  await delay(600);
-                  smState = 'NAVIGATING';
-                  break;
-              }
-              
-              case 'NAVIGATING': {
-                  logDiagnostic('MAYA', 'Attempting to click Submit/Next.');
-                  window.scrollTo(0, document.body.scrollHeight);
-                  await delay(1000);
-                  
-                  let actionTaken = null;
-                  if (isAdityaPlatform) {
-                      const btns = [...document.querySelectorAll('button')];
-                      const nextBtn = btns.find(b => b.innerText && b.innerText.trim() === 'Next');
-                      const submitBtn = btns.find(b => b.innerText && (b.innerText.includes('Submit') || b.innerText.includes('Finish')));
-                      
-                      if (nextBtn) {
-                          await interactAggressively(nextBtn);
-                          actionTaken = 'next';
-                      } else if (submitBtn) {
-                          await interactAggressively(submitBtn);
-                          actionTaken = 'submitted';
-                      }
-                  } else {
-                      const submitTexts = ['submit', 'submit quiz', 'submit exam', 'submit assignment'];
-                      let btn = null;
-                      const allButtons = document.querySelectorAll('button, [role="button"]');
-                      for (const b of allButtons) {
-                          const t = (b.innerText || '').toLowerCase().trim();
-                          if (submitTexts.includes(t)) { btn = b; break; }
-                      }
-                      if (btn) {
-                          await interactAggressively(btn);
-                          actionTaken = 'submitted';
-                      }
-                  }
-                  
-                  if (actionTaken === 'next') {
-                      logDiagnostic('MAYA', 'Next clicked. Proceeding to VERIFYING_NAVIGATION.');
-                      smState = 'VERIFYING_NAVIGATION';
-                  } else if (actionTaken === 'submitted') {
-                      logDiagnostic('MAYA', 'Submit clicked. Proceeding to COMPLETE.');
-                      smState = 'COMPLETE';
-                  } else {
-                      logDiagnostic('MAYA', 'Failed to find Next/Submit. Marking complete to prevent infinite loop.');
-                      smState = 'COMPLETE';
-                  }
-                  break;
-              }
-              
-              case 'VERIFYING_NAVIGATION': {
-                  logDiagnostic('MAYA', 'Polling for DOM change (max 8s)...');
-                  const didNavigate = await verifyNavigation(currentQHash);
-                  
-                  if (didNavigate) {
-                      logDiagnostic('MAYA', 'Navigation confirmed. Restarting for new question.');
-                      smState = 'READING_QUESTION';
-                  } else {
-                      retryCount++;
-                      if (retryCount >= MAX_RETRIES) {
-                          logDiagnostic('MAYA', 'Navigation timed out 3 times. Stopping to prevent loop.');
-                          smState = 'ERROR';
-                      } else {
-                          logDiagnostic('MAYA', `Navigation failed to change question. Retry ${retryCount}/${MAX_RETRIES}`);
-                          smState = 'NAVIGATING'; // Try clicking Next again
-                      }
-                  }
-                  break;
-              }
+    const total = state.quizUrls.length;
+    const idx = state.currentIndex;
+
+    let smState = 'READING_QUESTION';
+    let retryCount = 0;
+    const MAX_RETRIES = 3;
+    let currentQHash = '';
+    let isClaudeForced = typeof state.quizUrls[idx] === 'object' && state.quizUrls[idx].forceClaude;
+    let aiChoice = 'gemini'; // default
+    let bgMode = false;
+
+    logDiagnostic('INIT', `Starting State Machine for Quiz ${idx + 1} of ${total}`);
+
+    const isNativeRetry = await clickStartButton();
+    if (isNativeRetry && !isClaudeForced) {
+      logDiagnostic('INIT', 'Native retry override detected. Upgrading to Claude.');
+      isClaudeForced = true;
+    }
+
+    while (smState !== 'COMPLETE' && smState !== 'ERROR') {
+      logDiagnostic('STATE', `Transition -> ${smState}`);
+
+      switch (smState) {
+        case 'READING_QUESTION': {
+          await waitFor(() => findBlocks().length > 0, 12000);
+          await delay(800);
+          const blocks = findBlocks();
+          if (!blocks.length) {
+            logDiagnostic('MAYA', 'No questions found in DOM.');
+            smState = 'ERROR';
+            break;
           }
-      }
-      
-      if (smState === 'COMPLETE') {
-          const nextIndex = idx + 1;
-          if (nextIndex < total) {
-              const newState = { ...state, currentIndex: nextIndex };
-              await setState(newState);
-              const nextUrl = typeof state.quizUrls[nextIndex] === 'object' ? state.quizUrls[nextIndex].url : state.quizUrls[nextIndex];
-              location.href = nextUrl;
+
+          currentQHash = getQuestion(blocks[0])?.slice(0, 50) || '';
+          if (answered.has(currentQHash)) {
+            logDiagnostic('MAYA', 'Question already answered in memory. Attempting to force Next.');
+            smState = 'NAVIGATING';
+            break;
+          }
+          smState = 'REQUESTING_AI';
+          break;
+        }
+
+        case 'REQUESTING_AI': {
+          // Fetch preferences
+          const prefs = await new Promise(r => chrome.storage.local.get(['preferredAI', 'backgroundMode'], d => r(d)));
+          aiChoice = isClaudeForced ? 'claude' : (prefs.preferredAI || 'gemini');
+          bgMode = prefs.backgroundMode || false;
+
+          // Setup payload
+          const TASK_KEY = aiChoice === 'claude' ? 'cqsClaudeTask' : (aiChoice === 'copilot' ? 'cqsCopilotTask' : (aiChoice === 'gemini' ? 'cqsGeminiTask' : 'cqsChatGptTask'));
+          const OPEN_MSG = aiChoice === 'claude' ? 'OPEN_CLAUDE_TAB' : (aiChoice === 'copilot' ? 'OPEN_COPILOT_TAB' : (aiChoice === 'gemini' ? 'OPEN_GEMINI_TAB' : 'OPEN_CHATGPT_TAB'));
+
+          const blocks = findBlocks();
+          const blockMeta = [];
+          const screenshotMap = {};
+
+          for (let i = 0; i < blocks.length; i++) {
+            const block = blocks[i];
+            const q = getQuestion(block);
+            const type = getType(block);
+            const opts = type !== 'text' ? getOptions(block) : [];
+            blockMeta.push({ block, q, type, opts });
+
+            if (hasVisualContent(block)) {
+              logDiagnostic('MAYA', `Extracting visual content for Q${i + 1}`);
+              const dataUrl = await captureBlockScreenshot(block);
+              if (dataUrl) screenshotMap[i + 1] = dataUrl;
+            }
+          }
+
+          let promptLines = ['Analyze the following educational items and extract the most factually accurate option(s) for each.'];
+          if (Object.keys(screenshotMap).length > 0) promptLines.push('IMPORTANT: Some questions include images/screenshots attached.');
+          promptLines.push('Rules: Single-choice (1 letter), Multi-select (all correct letters), Open-ended (raw number or short text).');
+          promptLines.push('CRITICAL JSON RULES: Output ONLY raw JSON. No markdown fences. No explanation.');
+          promptLines.push('OUTPUT FORMAT:\\n{"answers": [{"q": 999, "a": ["EXAMPLE"]}]}');
+          promptLines.push('--- ITEMS ---');
+          blockMeta.forEach(({ q, type, opts }, i) => {
+            promptLines.push(`Q${i + 1} ${type === 'checkbox' ? '[MULTI-SELECT]' : type === 'text' ? '[OPEN-ENDED]' : '[SINGLE-CHOICE]'}: ${q}`);
+            if (opts.length) opts.forEach((o, j) => promptLines.push(`  ${String.fromCharCode(65 + j)}. ${o}`));
+          });
+          promptLines.push('FINAL INSTRUCTION: Generate only JSON.');
+
+          const prompt = promptLines.join('\\n');
+          const taskId = Date.now().toString();
+          const screenshots = Object.entries(screenshotMap).map(([q, dataUrl]) => ({ q: parseInt(q), dataUrl }));
+
+          const ANSWER_KEY = aiChoice === 'claude' ? 'cqsClaudeAnswers' : (aiChoice === 'copilot' ? 'cqsCopilotAnswers' : (aiChoice === 'gemini' ? 'cqsGeminiAnswers' : 'cqsChatGptAnswers'));
+          await chrome.storage.local.remove([ANSWER_KEY]);
+          await chrome.storage.local.set({ [TASK_KEY]: { prompt, taskId, timestamp: Date.now(), screenshots } });
+
+          chrome.runtime.sendMessage({ type: OPEN_MSG, background: bgMode });
+
+          window.currentBlockMeta = blockMeta;
+          window.currentAnswerKey = ANSWER_KEY;
+          smState = 'WAITING_FOR_AI';
+          break;
+        }
+
+        case 'WAITING_FOR_AI': {
+          logDiagnostic('AI', `Waiting up to 3 mins for ${aiChoice}...`);
+          const deadline = Date.now() + 180000;
+          let success = false;
+
+          while (Date.now() < deadline) {
+            await delay(2000);
+            const stored = await new Promise(r => chrome.storage.local.get([window.currentAnswerKey, 'cqsBridgeStatus'], d => r(d)));
+            if (stored[window.currentAnswerKey]) {
+              const ansData = stored[window.currentAnswerKey];
+              if (ansData.error) {
+                logDiagnostic('AI', `Error: ${ansData.error}`);
+                break;
+              }
+              const hasAnswers = Array.isArray(ansData.answers) && ansData.answers.length > 0;
+              const hasRawText = ansData.rawText && ansData.rawText.length > 10;
+
+              if (hasAnswers || hasRawText) {
+                window.currentAiAnswers = hasAnswers ? ansData.answers : parseRawText(ansData.rawText);
+                if (window.currentAiAnswers.length > 0) {
+                  success = true;
+                }
+              }
+              break;
+            }
+          }
+
+          if (success) {
+            logDiagnostic('AI', `Response obtained successfully.`);
+            await chrome.storage.local.remove([window.currentAnswerKey]);
+            smState = 'SELECTING_ANSWER';
           } else {
-              await clearState();
-              logDiagnostic('INIT', 'All quizzes complete!');
-              if (isAdityaPlatform) location.href = 'https://maya.adityauniversity.in/';
-              else location.href = `https://www.coursera.org/learn/${state.courseSlug}/home/assignments`;
+            logDiagnostic('AI', 'Timed out or failed. Falling back to Claude.');
+            if (aiChoice !== 'claude') {
+              isClaudeForced = true;
+              smState = 'REQUESTING_AI';
+            } else {
+              smState = 'ERROR';
+            }
           }
+          break;
+        }
+
+        case 'SELECTING_ANSWER': {
+          logDiagnostic('MAYA', 'Applying answers to UI.');
+          await applyWebUiAnswers(window.currentBlockMeta, window.currentAiAnswers, aiChoice);
+          answered.set(currentQHash, true);
+          await checkHonorCode();
+          await delay(600);
+          smState = 'NAVIGATING';
+          break;
+        }
+
+        case 'NAVIGATING': {
+          logDiagnostic('MAYA', 'Attempting to click Submit/Next.');
+          window.scrollTo(0, document.body.scrollHeight);
+          await delay(1000);
+
+          let actionTaken = null;
+          if (isAdityaPlatform) {
+            const btns = [...document.querySelectorAll('button')];
+            const nextBtn = btns.find(b => b.innerText && b.innerText.trim() === 'Next');
+            const submitBtn = btns.find(b => b.innerText && (b.innerText.includes('Submit') || b.innerText.includes('Finish')));
+
+            if (nextBtn) {
+              await interactAggressively(nextBtn);
+              actionTaken = 'next';
+            } else if (submitBtn) {
+              await interactAggressively(submitBtn);
+              actionTaken = 'submitted';
+            }
+          } else {
+            const submitTexts = ['submit', 'submit quiz', 'submit exam', 'submit assignment'];
+            let btn = null;
+            const allButtons = document.querySelectorAll('button, [role="button"]');
+            for (const b of allButtons) {
+              const t = (b.innerText || '').toLowerCase().trim();
+              if (submitTexts.includes(t)) { btn = b; break; }
+            }
+            if (btn) {
+              await interactAggressively(btn);
+              actionTaken = 'submitted';
+            }
+          }
+
+          if (actionTaken === 'next') {
+            logDiagnostic('MAYA', 'Next clicked. Proceeding to VERIFYING_NAVIGATION.');
+            smState = 'VERIFYING_NAVIGATION';
+          } else if (actionTaken === 'submitted') {
+            logDiagnostic('MAYA', 'Submit clicked. Proceeding to COMPLETE.');
+            smState = 'COMPLETE';
+          } else {
+            logDiagnostic('MAYA', 'Failed to find Next/Submit. Marking complete to prevent infinite loop.');
+            smState = 'COMPLETE';
+          }
+          break;
+        }
+
+        case 'VERIFYING_NAVIGATION': {
+          logDiagnostic('MAYA', 'Polling for DOM change (max 8s)...');
+          const didNavigate = await verifyNavigation(currentQHash);
+
+          if (didNavigate) {
+            logDiagnostic('MAYA', 'Navigation confirmed. Restarting for new question.');
+            smState = 'READING_QUESTION';
+          } else {
+            retryCount++;
+            if (retryCount >= MAX_RETRIES) {
+              logDiagnostic('MAYA', 'Navigation timed out 3 times. Stopping to prevent loop.');
+              smState = 'ERROR';
+            } else {
+              logDiagnostic('MAYA', `Navigation failed to change question. Retry ${retryCount}/${MAX_RETRIES}`);
+              smState = 'NAVIGATING'; // Try clicking Next again
+            }
+          }
+          break;
+        }
       }
+    }
+
+    if (smState === 'COMPLETE') {
+      const nextIndex = idx + 1;
+      if (nextIndex < total) {
+        const newState = { ...state, currentIndex: nextIndex };
+        await setState(newState);
+        const nextUrl = typeof state.quizUrls[nextIndex] === 'object' ? state.quizUrls[nextIndex].url : state.quizUrls[nextIndex];
+        location.href = nextUrl;
+      } else {
+        await clearState();
+        logDiagnostic('INIT', 'All quizzes complete!');
+        if (isAdityaPlatform) location.href = 'https://maya.adityauniversity.in/';
+        else location.href = `https://www.coursera.org/learn/${state.courseSlug}/home/assignments`;
+      }
+    }
   }
 
 
@@ -864,49 +898,49 @@
 
     let startReviewBtn = null;
     await waitFor(() => {
-        const allBtns = [...document.querySelectorAll('button, a, .cds-button-primary')];
-        startReviewBtn = allBtns.find(b => {
-             const txt = (b.innerText || '').toLowerCase().trim();
-             return txt === 'start reviewing' || txt === 'review peers' || txt === 'resume reviewing';
-        });
-        const isGradingActive = document.querySelectorAll('input[type="radio"]').length > 0;
-        return startReviewBtn || isGradingActive;
+      const allBtns = [...document.querySelectorAll('button, a, .cds-button-primary')];
+      startReviewBtn = allBtns.find(b => {
+        const txt = (b.innerText || '').toLowerCase().trim();
+        return txt === 'start reviewing' || txt === 'review peers' || txt === 'resume reviewing';
+      });
+      const isGradingActive = document.querySelectorAll('input[type="radio"]').length > 0;
+      return startReviewBtn || isGradingActive;
     }, 6000);
 
     if (startReviewBtn) {
-         setStatus('Entering peer grading view...');
-         startReviewBtn.click();
-         await delay(4000); // let SPA route us to /review-next
-         const isGradingActive = document.querySelectorAll('input[type="radio"]').length > 0;
-         if (!isGradingActive && !location.href.includes('review-next')) {
-            setStatus('Checking context...');
-            await delay(1000);
-         }
+      setStatus('Entering peer grading view...');
+      startReviewBtn.click();
+      await delay(4000); // let SPA route us to /review-next
+      const isGradingActive = document.querySelectorAll('input[type="radio"]').length > 0;
+      if (!isGradingActive && !location.href.includes('review-next')) {
+        setStatus('Checking context...');
+        await delay(1000);
+      }
     }
 
     const fieldsets = [...document.querySelectorAll('fieldset, .rc-FormPartsQuestion, .rc-RubricCriteria')];
     if (fieldsets.length === 0) {
-        // Double check: if it says "You have reviewed X peers" and there's no Start Reviewing button, we are done!
-        const bodyTxt = document.body.innerText.toLowerCase();
-        if (bodyTxt.includes('done') || bodyTxt.includes('keep reviewing') || bodyTxt.includes('to pass this assignment, you must')) {
-             if (state?.phase === 'peer_review' || state?.phase === 'peer_review_queue') {
-                   setStatus('✅ Peer reviews complete! Moving on...');
-                   await delay(2000);
-                   const nextIndex = state.currentIndex + 1;
-                   if (state.quizUrls && nextIndex < state.quizUrls.length) {
-                       const newState = { ...state, currentIndex: nextIndex };
-                       await setState(newState);
-                       const nextUrl = typeof state.quizUrls[nextIndex] === 'object' ? state.quizUrls[nextIndex].url : state.quizUrls[nextIndex];
-                       location.href = nextUrl;
-                   } else {
-                       await clearState();
-                       location.href = `https://www.coursera.org/learn/${state.courseSlug}/home/assignments`;
-                   }
-                   return;
-             }
+      // Double check: if it says "You have reviewed X peers" and there's no Start Reviewing button, we are done!
+      const bodyTxt = document.body.innerText.toLowerCase();
+      if (bodyTxt.includes('done') || bodyTxt.includes('keep reviewing') || bodyTxt.includes('to pass this assignment, you must')) {
+        if (state?.phase === 'peer_review' || state?.phase === 'peer_review_queue') {
+          setStatus('✅ Peer reviews complete! Moving on...');
+          await delay(2000);
+          const nextIndex = state.currentIndex + 1;
+          if (state.quizUrls && nextIndex < state.quizUrls.length) {
+            const newState = { ...state, currentIndex: nextIndex };
+            await setState(newState);
+            const nextUrl = typeof state.quizUrls[nextIndex] === 'object' ? state.quizUrls[nextIndex].url : state.quizUrls[nextIndex];
+            location.href = nextUrl;
+          } else {
+            await clearState();
+            location.href = `https://www.coursera.org/learn/${state.courseSlug}/home/assignments`;
+          }
+          return;
         }
-        setStatus('⚠ No peer review rubric found.');
-        return;
+      }
+      setStatus('⚠ No peer review rubric found.');
+      return;
     }
 
     setStatus('Extracting student submission & rubric...');
@@ -917,51 +951,51 @@
     // Inject Generic Free Text Comments
     const textboxes = [...document.querySelectorAll('div[role="textbox"], textarea')];
     for (let tb of textboxes) {
-       tb.focus();
-       document.execCommand('selectAll', false, null);
-       document.execCommand('delete', false, null);
-       document.execCommand('insertText', false, 'Great job on this assignment! Everything looks thoroughly explained and implemented perfectly.');
-       // Fire a native InputEvent so React re-validates the form state
-       tb.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true }));
-       await delay(100);
+      tb.focus();
+      document.execCommand('selectAll', false, null);
+      document.execCommand('delete', false, null);
+      document.execCommand('insertText', false, 'Great job on this assignment! Everything looks thoroughly explained and implemented perfectly.');
+      // Fire a native InputEvent so React re-validates the form state
+      tb.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true }));
+      await delay(100);
     }
 
     // Try to apply maximum radio button scores by grouping 'name' attributes
     const radioButtons = Array.from(document.querySelectorAll('input[type="radio"]'));
     const groupedRadios = radioButtons.reduce((groups, radio) => {
-        const name = radio.getAttribute('name');
-        if (name) {
-            if (!groups[name]) groups[name] = [];
-            groups[name].push(radio);
-        }
-        return groups;
+      const name = radio.getAttribute('name');
+      if (name) {
+        if (!groups[name]) groups[name] = [];
+        groups[name].push(radio);
+      }
+      return groups;
     }, {});
 
     Object.values(groupedRadios).forEach(group => {
-        let maxPoints = -1;
-        let bestRadio = null;
+      let maxPoints = -1;
+      let bestRadio = null;
 
-        group.forEach(radio => {
-            const label = radio.closest('label') || radio.closest('.rc-RubricCriteria') || radio.parentElement;
-            if (label) {
-                const match = label.innerText.match(/(\d+)\s*point/i);
-                if (match) {
-                    const points = parseInt(match[1], 10);
-                    if (points >= maxPoints) { // >= ensures we pick the last one if tied (often visual highest)
-                        maxPoints = points;
-                        bestRadio = radio;
-                    }
-                } else if (maxPoints === -1) {
-                    // Fallback: if no text parsed, just assume the last one is best later
-                    bestRadio = radio;
-                }
+      group.forEach(radio => {
+        const label = radio.closest('label') || radio.closest('.rc-RubricCriteria') || radio.parentElement;
+        if (label) {
+          const match = label.innerText.match(/(\d+)\s*point/i);
+          if (match) {
+            const points = parseInt(match[1], 10);
+            if (points >= maxPoints) { // >= ensures we pick the last one if tied (often visual highest)
+              maxPoints = points;
+              bestRadio = radio;
             }
-        });
-
-        if (bestRadio) {
-            bestRadio.click();
-            bestRadio.dispatchEvent(new Event('change', { bubbles: true }));
+          } else if (maxPoints === -1) {
+            // Fallback: if no text parsed, just assume the last one is best later
+            bestRadio = radio;
+          }
         }
+      });
+
+      if (bestRadio) {
+        bestRadio.click();
+        bestRadio.dispatchEvent(new Event('change', { bubbles: true }));
+      }
     });
 
     await delay(1500);
@@ -969,74 +1003,74 @@
     const allBtns = [...document.querySelectorAll('button')];
     const actualSubmitReview = allBtns.find(b => /submit\s*review/i.test((b.innerText || b.textContent || '')));
     if (actualSubmitReview && !actualSubmitReview.disabled) {
-         setStatus('Submitting review...');
-         actualSubmitReview.click();
-         await delay(4000); // wait for confirmation screen
+      setStatus('Submitting review...');
+      actualSubmitReview.click();
+      await delay(4000); // wait for confirmation screen
 
-         // ── BUG-02 fix: always read reviewsCompleted from storage before incrementing.
-         // The in-memory `state` object is reconstructed on every page reload, so
-         // mutating it directly loses the count if a navigation occurs between reviews.
-         // Reading from storage first makes the increment reload-safe.
-         const freshState = await getState();
-         const newCount = (freshState.reviewsCompleted || 0) + 1;
-         const updatedState = { ...freshState, reviewsCompleted: newCount };
-         await setState(updatedState);
+      // ── BUG-02 fix: always read reviewsCompleted from storage before incrementing.
+      // The in-memory `state` object is reconstructed on every page reload, so
+      // mutating it directly loses the count if a navigation occurs between reviews.
+      // Reading from storage first makes the increment reload-safe.
+      const freshState = await getState();
+      const newCount = (freshState.reviewsCompleted || 0) + 1;
+      const updatedState = { ...freshState, reviewsCompleted: newCount };
+      await setState(updatedState);
 
-         // Use the per-assignment target (3 or 4) stored in quizUrls entry
-         const currentItem = updatedState.quizUrls?.[updatedState.currentIndex];
-         const target = (typeof currentItem === 'object' && currentItem.peerReviewTarget > 0)
-           ? currentItem.peerReviewTarget
-           : 3; // default fallback
+      // Use the per-assignment target (3 or 4) stored in quizUrls entry
+      const currentItem = updatedState.quizUrls?.[updatedState.currentIndex];
+      const target = (typeof currentItem === 'object' && currentItem.peerReviewTarget > 0)
+        ? currentItem.peerReviewTarget
+        : 3; // default fallback
 
-         console.log(`[QuizAI] Peer reviews completed this session: ${newCount}/${target}`);
+      console.log(`[QuizAI] Peer reviews completed this session: ${newCount}/${target}`);
 
-         if (newCount < target) {
-             setStatus(`Submitted ✓ (${newCount}/${target}) — loading next peer...`);
+      if (newCount < target) {
+        setStatus(`Submitted ✓ (${newCount}/${target}) — loading next peer...`);
 
-             // Coursera SPA: after submit it shows a "Keep reviewing" / "Next feedback" button
-             // OR it automatically loads the next submission. Handle both:
-             await delay(2000);
-             const nextBtn = [...document.querySelectorAll('button, a')].find(b =>
-               /keep\s*review|next\s*(feedback|peer|review)|review\s*another|continue/i.test(b.innerText || '')
-             );
-             if (nextBtn) {
-               nextBtn.click();
-               await delay(2000);
-             }
+        // Coursera SPA: after submit it shows a "Keep reviewing" / "Next feedback" button
+        // OR it automatically loads the next submission. Handle both:
+        await delay(2000);
+        const nextBtn = [...document.querySelectorAll('button, a')].find(b =>
+          /keep\s*review|next\s*(feedback|peer|review)|review\s*another|continue/i.test(b.innerText || '')
+        );
+        if (nextBtn) {
+          nextBtn.click();
+          await delay(2000);
+        }
 
-             // Wait for the new rubric (radio buttons or fieldset) to load in-place
-             await waitFor(
-               () => document.querySelectorAll('input[type="radio"], fieldset').length > 0,
-               10000
-             );
-             await delay(600); // settle
+        // Wait for the new rubric (radio buttons or fieldset) to load in-place
+        await waitFor(
+          () => document.querySelectorAll('input[type="radio"], fieldset').length > 0,
+          10000
+        );
+        await delay(600); // settle
 
-             // Pass updatedState (with correct newCount) so recursive call has the latest data
-             autoSolvePeerReview(updatedState);
-         } else {
-             setStatus(`✅ All ${target} peer reviews done! Proceeding...`);
-             await delay(2000);
-             // Use updatedState (the storage-backed copy) to reset the counter cleanly
-             const doneState = { ...updatedState, reviewsCompleted: 0 };
-             await setState(doneState);
+        // Pass updatedState (with correct newCount) so recursive call has the latest data
+        autoSolvePeerReview(updatedState);
+      } else {
+        setStatus(`✅ All ${target} peer reviews done! Proceeding...`);
+        await delay(2000);
+        // Use updatedState (the storage-backed copy) to reset the counter cleanly
+        const doneState = { ...updatedState, reviewsCompleted: 0 };
+        await setState(doneState);
 
-             // Fall back to Master Queue if active
-             if (doneState.quizUrls && typeof doneState.currentIndex !== 'undefined') {
-                 const nextIndex = doneState.currentIndex + 1;
-                 if (nextIndex < doneState.quizUrls.length) {
-                     const advancedState = { ...doneState, currentIndex: nextIndex };
-                     await setState(advancedState);
-                     const nextUrl = typeof doneState.quizUrls[nextIndex] === 'object' ? doneState.quizUrls[nextIndex].url : doneState.quizUrls[nextIndex];
-                     location.href = nextUrl;
-                     return;
-                 }
-             }
+        // Fall back to Master Queue if active
+        if (doneState.quizUrls && typeof doneState.currentIndex !== 'undefined') {
+          const nextIndex = doneState.currentIndex + 1;
+          if (nextIndex < doneState.quizUrls.length) {
+            const advancedState = { ...doneState, currentIndex: nextIndex };
+            await setState(advancedState);
+            const nextUrl = typeof doneState.quizUrls[nextIndex] === 'object' ? doneState.quizUrls[nextIndex].url : doneState.quizUrls[nextIndex];
+            location.href = nextUrl;
+            return;
+          }
+        }
 
-             // If manual loop, exit to assignments page
-             await clearState();
-             location.href = location.href.replace(/\/peer\/([^\/]+)\/([^\/]+)\/.*$/, '/home/assignments');
-         }
-         return;
+        // If manual loop, exit to assignments page
+        await clearState();
+        location.href = location.href.replace(/\/peer\/([^\/]+)\/([^\/]+)\/.*$/, '/home/assignments');
+      }
+      return;
     }
 
     setStatus('Peer reviewed! Click Next/Submit manually.');
@@ -1215,7 +1249,7 @@
       const btns = [...document.querySelectorAll('button')];
       const nextBtn = btns.find(b => b.innerText && b.innerText.trim() === 'Next');
       const submitBtn = btns.find(b => b.innerText && (b.innerText.includes('Submit') || b.innerText.includes('Finish')));
-      
+
       if (nextBtn) {
         nextBtn.click();
         return 'next';
@@ -1478,10 +1512,10 @@
       const imgTarget = getCompanionImage(block);
 
       if (!imgTarget) {
-          // If a Canvas exists, dump it directly
-          const cvs = block.querySelector('canvas');
-          if (cvs) return cvs.toDataURL('image/png');
-          return null; // For SVGs or missing images, we skip (vision models handle images best)
+        // If a Canvas exists, dump it directly
+        const cvs = block.querySelector('canvas');
+        if (cvs) return cvs.toDataURL('image/png');
+        return null; // For SVGs or missing images, we skip (vision models handle images best)
       }
 
       // We have an <img> tag. Draw it to an offscreen canvas to get Base64.
@@ -1499,10 +1533,10 @@
           resolve(canvas.toDataURL('image/png'));
         };
         imgObj.onerror = () => {
-           // Fallback if CORS prevents crossOrigin load: remove crossOrigin and try again
-           // Note: if CORS fails, canvas.toDataURL will taint and throw, but we still try.
-           console.warn('[QuizAI] CORS failed for image, capturing may taint');
-           resolve(null);
+          // Fallback if CORS prevents crossOrigin load: remove crossOrigin and try again
+          // Note: if CORS fails, canvas.toDataURL will taint and throw, but we still try.
+          console.warn('[QuizAI] CORS failed for image, capturing may taint');
+          resolve(null);
         };
         imgObj.src = imgTarget.src;
       });
@@ -1572,7 +1606,7 @@
     }
 
     // 3. Fallback: first meaningful heading or paragraph in the block
-    for (const sel of ['h1','h2','h3','h4','h5','p']) {
+    for (const sel of ['h1', 'h2', 'h3', 'h4', 'h5', 'p']) {
       const el = b.querySelector(sel);
       if (el) {
         const txt = (el.innerText || '').replace(/\s+/g, ' ').trim();
@@ -1781,9 +1815,9 @@
         // Find the actual label wrapper that Coursera expects you to click
         let parentLabel = inp.closest('label') || inp.parentElement?.closest('label');
         if (!parentLabel && inp.id) {
-            parentLabel = block.querySelector('label[for="' + inp.id + '"]');
+          parentLabel = block.querySelector('label[for="' + inp.id + '"]');
         }
-        
+
         if (parentLabel) {
           await interactAggressively(parentLabel);
         } else {
@@ -1793,13 +1827,13 @@
 
         // Ensure state updates in React if synthetic click wasn't captured
         if (inp.type === 'checkbox' && !inp.checked) {
-            const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'checked')?.set;
-            if (nativeSetter) {
-                nativeSetter.call(inp, true);
-            } else {
-                inp.checked = true;
-            }
-            inp.dispatchEvent(new Event('change', { bubbles: true }));
+          const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'checked')?.set;
+          if (nativeSetter) {
+            nativeSetter.call(inp, true);
+          } else {
+            inp.checked = true;
+          }
+          inp.dispatchEvent(new Event('change', { bubbles: true }));
         }
       }
     }

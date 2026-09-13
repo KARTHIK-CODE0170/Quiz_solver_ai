@@ -199,7 +199,10 @@
             for (const candidate of [...candidates].reverse()) {
                 try {
                     const p = JSON.parse(candidate);
-                    if (Array.isArray(p.answers)) return { answers: p.answers };
+                    if (Array.isArray(p.answers) && p.answers.length > 0) {
+                        const isDummy = p.answers.some(ans => ans.q === 999 || (Array.isArray(ans.a) && ans.a.includes('EXAMPLE')));
+                        if (!isDummy) return { answers: p.answers };
+                    }
                 } catch { }
             }
             if (skipFallback) return { answers: [] };
@@ -210,7 +213,10 @@
                         return ': "' + fixed + '"';
                     });
                     const p = JSON.parse(sanitized);
-                    if (Array.isArray(p.answers)) return { answers: p.answers };
+                    if (Array.isArray(p.answers) && p.answers.length > 0) {
+                        const isDummy = p.answers.some(ans => ans.q === 999 || (Array.isArray(ans.a) && ans.a.includes('EXAMPLE')));
+                        if (!isDummy) return { answers: p.answers };
+                    }
                 } catch { }
             }
             return { answers: [] };
