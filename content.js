@@ -243,172 +243,8 @@
   // ════════════════════════════════════════════════════════════════════════════
   //  WEB UI SOLVER (ChatGPT / Claude)
   // ════════════════════════════════════════════════════════════════════════════
-  async function solveWithWebUI(forceAiChoice = null) {
-    const prefs = await new Promise(r => chrome.storage.local.get(['preferredAI', 'backgroundMode'], d => r(d)));
-    const aiChoice = forceAiChoice || prefs.preferredAI || 'gemini';
-    const bgMode = prefs.backgroundMode || false;
+  // [REMOVED solveWithWebUI in favor of State Machine]
 
-    const TASK_KEY = aiChoice === 'claude' ? 'cqsClaudeTask' : (aiChoice === 'copilot' ? 'cqsCopilotTask' : (aiChoice === 'gemini' ? 'cqsGeminiTask' : 'cqsChatGptTask'));
-    const ANSWER_KEY = aiChoice === 'claude' ? 'cqsClaudeAnswers' : (aiChoice === 'copilot' ? 'cqsCopilotAnswers' : (aiChoice === 'gemini' ? 'cqsGeminiAnswers' : 'cqsChatGptAnswers'));
-    const OPEN_MSG = aiChoice === 'claude' ? 'OPEN_CLAUDE_TAB' : (aiChoice === 'copilot' ? 'OPEN_COPILOT_TAB' : (aiChoice === 'gemini' ? 'OPEN_GEMINI_TAB' : 'OPEN_CHATGPT_TAB'));
-    const AI_NAME = aiChoice === 'claude' ? 'Claude' : (aiChoice === 'copilot' ? 'Copilot' : (aiChoice === 'gemini' ? 'Gemini' : 'ChatGPT'));
-
-    // Wait for questions
-    await waitFor(() => findBlocks().length > 0, 10000);
-    const blocks = findBlocks();
-    if (!blocks.length) { setStatus('⚠ No questions found on this page'); return; }
-
-    // Check if we already answered these newly found questions
-    // (A primitive check to prevent infinite loops if something fails)
-    const firstQKey = getQuestion(blocks[0])?.slice(0, 50);
-    if (firstQKey && answered.has(firstQKey)) {
-      setStatus(`✅ Already answered this quiz`);
-      return;
-    }
-
-
-    // ── Detect which blocks have visual content and capture screenshots ────────
-    setStatus(`Scanning for image-based questions...`);
-    const blockMeta = [];
-    const screenshotMap = {}; // { qIndex: dataUrl }
-    // Collect metadata
-    for (let i = 0; i < blocks.length; i++) {
-      const block = blocks[i];
-      const q = getQuestion(block);
-      const type = getType(block);
-      const opts = type !== 'text' ? getOptions(block) : [];
-      blockMeta.push({ block, q, type, opts });
-    }
-
-    // Capture image data directly via Offscreen Canvas locally
-    for (let i = 0; i < blocks.length; i++) {
-        if (hasVisualContent(blocks[i])) {
-            setStatus(`Capturing DataFrame/Image for Q${i + 1}...`);
-            const dataUrl = await captureBlockScreenshot(blocks[i]);
-            if (dataUrl) screenshotMap[i + 1] = dataUrl;
-            console.log(`[QuizAI] Q${i + 1} has visual content — screenshot extracted: ${!!dataUrl}`);
-        }
-    }
-
-    // Build numbered question list for the designated AI
-    let promptLines = [];
-    promptLines.push('Analyze the following educational items and extract the most factually accurate option(s) for each.');
-
-    if (Object.keys(screenshotMap).length > 0) {
-      promptLines.push('IMPORTANT: Some questions include images/screenshots attached — examine them carefully to answer correctly.');
-    }
-
-    promptLines.push('Rules:');
-    promptLines.push('  - Single-choice questions: respond with exactly 1 letter (e.g. "A")');
-    promptLines.push('  - Multi-select questions: respond with all correct letters (e.g. "A", "C")');
-    promptLines.push('  - Open-ended / free-text questions: If it asks for a specific value/number, respond ONLY with the raw number (e.g. "-19.5" or "0"). Do NOT write sentences. If it asks for an explanation, write a concise 1-2 sentence response. NO internal quotes.');
-    promptLines.push('CRITICAL JSON RULES: Output ONLY raw JSON. No markdown fences. No explanation. For open-ended answers, the entire answer must be a single JSON string with NO unescaped double-quotes inside it.');
-    promptLines.push('OUTPUT FORMAT:');
-    promptLines.push('{"answers": [{"q": 1, "a": ["A"]}, {"q": 2, "a": ["The answer is X because Y."]}]}');
-    promptLines.push('--- ITEMS ---');
-
-    blockMeta.forEach(({ q, type, opts }, i) => {
-      // Label question type explicitly so AI knows when to select multiple answers
-      const typeLabel = type === 'checkbox' ? '[MULTI-SELECT]' : type === 'text' ? '[OPEN-ENDED]' : '[SINGLE-CHOICE]';
-      promptLines.push(`Q${i + 1} ${typeLabel}: ${q}`);
-      if (screenshotMap[i + 1]) {
-        promptLines.push(`  [IMAGE SCREENSHOT ATTACHED for Q${i + 1} — refer to it for visual details]`);
-      }
-      if (opts.length) {
-        opts.forEach((o, j) => promptLines.push(`  ${String.fromCharCode(65 + j)}. ${o}`));
-      } else {
-        promptLines.push('  [Open-ended — if the question asks for a value, output ONLY the raw numeric value. Otherwise write short text]');
-      }
-      promptLines.push('');
-    });
-    promptLines.push('FINAL INSTRUCTION: You are an automated JSON API. DO NOT confirm receipt of these images. DO NOT ask how to proceed. Generate the requested JSON answers immediately without any conversational text.');
-
-    const prompt = promptLines.join('\n');
-    const taskId = Date.now().toString();
-    const screenshots = Object.entries(screenshotMap).map(([q, dataUrl]) => ({ q: parseInt(q), dataUrl }));
-
-    blocks.forEach(showLoader);
-    setStatus(`Opening ${AI_NAME} — wait for it to answer...`);
-
-    // Clear old answers, store the task payload (including screenshots for vision)
-    await chrome.storage.local.remove([ANSWER_KEY]);
-    await chrome.storage.local.set({
-      [TASK_KEY]: { prompt, taskId, timestamp: Date.now(), screenshots }
-    });
-
-    // Ask background to open the tab
-    chrome.runtime.sendMessage({ type: OPEN_MSG, background: bgMode });
-
-    // Poll for answers (up to 3 minutes)
-    setStatus(`Waiting for ${AI_NAME} to answer...`);
-    const deadline = Date.now() + 180000;
-    let answeredQuiz = false;
-    let pollCount = 0;
-
-    while (Date.now() < deadline) {
-      await delay(2000);
-      pollCount++;
-
-      const stored = await new Promise(r =>
-        chrome.storage.local.get([ANSWER_KEY, 'cqsBridgeStatus'], d => r(d))
-      );
-
-      const bridgeStatus = stored['cqsBridgeStatus'] || '';
-
-      if (pollCount % 5 === 0) {
-        setStatus(`Still waiting for ${AI_NAME}... (${Math.round((Date.now() - (deadline - 180000)) / 1000)}s) [${bridgeStatus}]`);
-      }
-
-      if (!stored[ANSWER_KEY]) continue;
-      const ansData = stored[ANSWER_KEY];
-
-      // Error from bridge
-      if (ansData.error) {
-        setStatus(`⚠ ${AI_NAME}: ${ansData.error}`);
-        blocks.forEach(b => showError(b, ansData.error));
-        await chrome.storage.local.remove([ANSWER_KEY, 'cqsBridgeStatus']);
-        return false;
-      }
-
-      // Got a response (answers array OR rawText)
-      const hasAnswers = Array.isArray(ansData.answers) && ansData.answers.length > 0;
-      const hasRawText = ansData.rawText && ansData.rawText.length > 10;
-
-      if (hasAnswers || hasRawText) {
-        setStatus(`Got ${AI_NAME} response! Filling in answers...`);
-
-        let finalAnswers = ansData.answers || [];
-
-        // If answers is empty but rawText exists, try re-parsing here
-        if (!hasAnswers && hasRawText) {
-          finalAnswers = parseRawText(ansData.rawText);
-          console.log('[QuizAI] Re-parsed from rawText:', finalAnswers);
-        }
-
-        await applyWebUiAnswers(blockMeta, finalAnswers, AI_NAME);
-        await chrome.storage.local.remove([ANSWER_KEY]);
-
-        // Check if parsing yielded actual answers
-        if (finalAnswers.length === 0) {
-          setStatus(`⚠ ${AI_NAME}: Failed to parse answers`);
-          blocks.forEach(b => showError(b, `Failed to parse answers`));
-          return false; // Parsing failed -> Failure
-        }
-
-        // Mark as answered to prevent re-running on same block ONLY if successful
-        if (firstQKey) answered.set(firstQKey, true);
-
-        setStatus(`✅ ${AI_NAME} answered your quiz!`);
-
-        setStatus(`✅ ${AI_NAME} answered your quiz!`);
-        return true;
-      }
-    }
-
-    setStatus(`⏱ Timed out — ${AI_NAME} took too long. Try again.`);
-    blocks.forEach(b => showError(b, `${AI_NAME} timed out`));
-    return false;
-  }
 
   // Local fallback parser: extract answers from AI response text
   function parseRawText(text) {
@@ -718,90 +554,295 @@
   // ════════════════════════════════════════════════════════════════════════════
   //  PHASE 2: Auto-solve and submit one quiz
   // ════════════════════════════════════════════════════════════════════════════
-  async function autoSolveAndSubmit(state) {
-    const total = state.quizUrls.length;
-    const idx = state.currentIndex;
-    const currentQuizItem = state.quizUrls[idx];
-    let isClaudeForced = typeof currentQuizItem === 'object' && currentQuizItem.forceClaude;
-
-    setStatus(`Quiz ${idx + 1} of ${total} — Opening...`);
-
-    // Step A: Click Start / Resume / Retry if present
-    const isNativeRetry = await clickStartButton();
-    if (isNativeRetry && !isClaudeForced) {
-        console.log('[QuizAI] Natively detected a Retry button override. Upgrading to Claude!');
-        isClaudeForced = true;
-    }
-
-    let isQuizFinished = false;
-
-    while (!isQuizFinished) {
-        // Step B: Wait for question blocks to actually appear in DOM
-        setStatus(`Quiz ${idx + 1} of ${total} — Loading questions...`);
-        await waitFor(() => findBlocks().length > 0, 12000);
-        await delay(800); // extra settle for React re-renders
-
-        // Step C: Solve all questions (Using Web UI logic now)
-        setStatus(`Quiz ${idx + 1} of ${total} — Answering...`);
-        let success = false;
-
-        if (isClaudeForced) {
-          setStatus(`Quiz ${idx + 1} of ${total} — Retrying failed quiz with Claude...`);
-          success = await solveWithWebUI('claude');
-        } else {
-          success = await solveWithWebUI();
-          // Automatic Fallback to Claude if ChatGPT fails or times out
-          if (!success) {
-            setStatus(`⚠ Failed with preferred AI. Falling back to Claude...`);
-            await delay(2000);
-            success = await solveWithWebUI('claude');
-          }
-        }
-
-        // Step D: Check honor code checkbox
-        setStatus(`Quiz ${idx + 1} of ${total} — Checking honor pledge...`);
-        await checkHonorCode();
-        await delay(600);
-
-        // Step E: Submit
-        setStatus(`Quiz ${idx + 1} of ${total} — Submitting...`);
-        const submitResult = await submitQuiz();
-        
-        if (submitResult === 'next') {
-            setStatus(`Moving to next page of questions...`);
-            // Clear the answered cache for the next page so we answer new questions
-            answered.clear();
-            await delay(3000); // Wait for the DOM to update to the next question
-            continue; // Loop again for the next question
-        } else if (submitResult === true || submitResult === 'submitted') {
-            setStatus(`Quiz ${idx + 1} of ${total} — Done ✅`);
-            isQuizFinished = true;
-        } else {
-            setStatus(`Quiz ${idx + 1} of ${total} — Submit button not found ⚠`);
-            isQuizFinished = true; // exit loop
-        }
-        await delay(2500);
-    }
-
-    // Step F: Move to next quiz or finish
-    const nextIndex = idx + 1;
-    if (nextIndex < total) {
-      const newState = { ...state, currentIndex: nextIndex };
-      await setState(newState);
-      const nextUrl = typeof state.quizUrls[nextIndex] === 'object' ? state.quizUrls[nextIndex].url : state.quizUrls[nextIndex];
-      location.href = nextUrl;
-    } else {
-      await clearState();
-      setStatus(`✅ All ${total} quizzes completed!`);
-      await delay(2000);
-      if (state.courseSlug === 'aditya') {
-          // If on Aditya platform, just reload the page or go to their portal home.
-          location.href = 'https://maya.adityauniversity.in/';
-      } else {
-          location.href = `https://www.coursera.org/learn/${state.courseSlug}/home/assignments`;
-      }
-    }
+  
+  // ════════════════════════════════════════════════════════════════════════════
+  //  STATE MACHINE RUNTIME & DIAGNOSTICS
+  // ════════════════════════════════════════════════════════════════════════════
+  function logDiagnostic(context, msg) {
+      console.log(`[QuizAI] [${context}] ${msg}`);
+      setStatus(`[${context}] ${msg}`);
   }
+
+  async function interactAggressively(element) {
+      if (!element) return false;
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      await delay(100);
+      try { element.focus(); } catch(e){}
+      element.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, cancelable: true }));
+      element.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+      element.dispatchEvent(new MouseEvent('pointerup', { bubbles: true, cancelable: true }));
+      element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+      element.click();
+      return true;
+  }
+
+  async function verifyNavigation(expectedHash, maxMs = 8000) {
+      return new Promise(resolve => {
+          let elapsed = 0;
+          const id = setInterval(() => {
+              const blocks = findBlocks();
+              if (blocks.length > 0) {
+                  const currentHash = getQuestion(blocks[0])?.slice(0, 50) || '';
+                  if (currentHash && currentHash !== expectedHash) {
+                      clearInterval(id);
+                      resolve(true); // Navigation successful
+                      return;
+                  }
+              }
+              const isGradingActive = document.querySelectorAll('input[type="radio"]').length === 0;
+              if (isGradingActive && document.body.innerText.includes('Done')) {
+                  clearInterval(id);
+                  resolve(true); // Passed quiz completely
+                  return;
+              }
+              elapsed += 500;
+              if (elapsed > maxMs) {
+                  clearInterval(id);
+                  resolve(false);
+              }
+          }, 500);
+      });
+  }
+
+  async function autoSolveAndSubmit(state) {
+      const total = state.quizUrls.length;
+      const idx = state.currentIndex;
+      
+      let smState = 'READING_QUESTION';
+      let retryCount = 0;
+      const MAX_RETRIES = 3;
+      let currentQHash = '';
+      let isClaudeForced = typeof state.quizUrls[idx] === 'object' && state.quizUrls[idx].forceClaude;
+      let aiChoice = 'gemini'; // default
+      let bgMode = false;
+      
+      logDiagnostic('INIT', `Starting State Machine for Quiz ${idx + 1} of ${total}`);
+      
+      const isNativeRetry = await clickStartButton();
+      if (isNativeRetry && !isClaudeForced) {
+          logDiagnostic('INIT', 'Native retry override detected. Upgrading to Claude.');
+          isClaudeForced = true;
+      }
+      
+      while (smState !== 'COMPLETE' && smState !== 'ERROR') {
+          logDiagnostic('STATE', `Transition -> ${smState}`);
+          
+          switch (smState) {
+              case 'READING_QUESTION': {
+                  await waitFor(() => findBlocks().length > 0, 12000);
+                  await delay(800); 
+                  const blocks = findBlocks();
+                  if (!blocks.length) {
+                      logDiagnostic('MAYA', 'No questions found in DOM.');
+                      smState = 'ERROR';
+                      break;
+                  }
+                  
+                  currentQHash = getQuestion(blocks[0])?.slice(0, 50) || '';
+                  if (answered.has(currentQHash)) {
+                      logDiagnostic('MAYA', 'Question already answered in memory. Attempting to force Next.');
+                      smState = 'NAVIGATING';
+                      break;
+                  }
+                  smState = 'REQUESTING_AI';
+                  break;
+              }
+              
+              case 'REQUESTING_AI': {
+                  // Fetch preferences
+                  const prefs = await new Promise(r => chrome.storage.local.get(['preferredAI', 'backgroundMode'], d => r(d)));
+                  aiChoice = isClaudeForced ? 'claude' : (prefs.preferredAI || 'gemini');
+                  bgMode = prefs.backgroundMode || false;
+                  
+                  // Setup payload
+                  const TASK_KEY = aiChoice === 'claude' ? 'cqsClaudeTask' : (aiChoice === 'copilot' ? 'cqsCopilotTask' : (aiChoice === 'gemini' ? 'cqsGeminiTask' : 'cqsChatGptTask'));
+                  const OPEN_MSG = aiChoice === 'claude' ? 'OPEN_CLAUDE_TAB' : (aiChoice === 'copilot' ? 'OPEN_COPILOT_TAB' : (aiChoice === 'gemini' ? 'OPEN_GEMINI_TAB' : 'OPEN_CHATGPT_TAB'));
+                  
+                  const blocks = findBlocks();
+                  const blockMeta = [];
+                  const screenshotMap = {};
+                  
+                  for (let i = 0; i < blocks.length; i++) {
+                      const block = blocks[i];
+                      const q = getQuestion(block);
+                      const type = getType(block);
+                      const opts = type !== 'text' ? getOptions(block) : [];
+                      blockMeta.push({ block, q, type, opts });
+                      
+                      if (hasVisualContent(block)) {
+                          logDiagnostic('MAYA', `Extracting visual content for Q${i+1}`);
+                          const dataUrl = await captureBlockScreenshot(block);
+                          if (dataUrl) screenshotMap[i+1] = dataUrl;
+                      }
+                  }
+                  
+                  let promptLines = ['Analyze the following educational items and extract the most factually accurate option(s) for each.'];
+                  if (Object.keys(screenshotMap).length > 0) promptLines.push('IMPORTANT: Some questions include images/screenshots attached.');
+                  promptLines.push('Rules: Single-choice (1 letter), Multi-select (all correct letters), Open-ended (raw number or short text).');
+                  promptLines.push('CRITICAL JSON RULES: Output ONLY raw JSON. No markdown fences. No explanation.');
+                  promptLines.push('OUTPUT FORMAT:
+{"answers": [{"q": 1, "a": ["A"]}]}');
+                  promptLines.push('--- ITEMS ---');
+                  blockMeta.forEach(({ q, type, opts }, i) => {
+                      promptLines.push(`Q${i + 1} ${type === 'checkbox' ? '[MULTI-SELECT]' : type === 'text' ? '[OPEN-ENDED]' : '[SINGLE-CHOICE]'}: ${q}`);
+                      if (opts.length) opts.forEach((o, j) => promptLines.push(`  ${String.fromCharCode(65 + j)}. ${o}`));
+                  });
+                  promptLines.push('FINAL INSTRUCTION: Generate only JSON.');
+                  
+                  const prompt = promptLines.join('
+');
+                  const taskId = Date.now().toString();
+                  const screenshots = Object.entries(screenshotMap).map(([q, dataUrl]) => ({ q: parseInt(q), dataUrl }));
+                  
+                  const ANSWER_KEY = aiChoice === 'claude' ? 'cqsClaudeAnswers' : (aiChoice === 'copilot' ? 'cqsCopilotAnswers' : (aiChoice === 'gemini' ? 'cqsGeminiAnswers' : 'cqsChatGptAnswers'));
+                  await chrome.storage.local.remove([ANSWER_KEY]);
+                  await chrome.storage.local.set({ [TASK_KEY]: { prompt, taskId, timestamp: Date.now(), screenshots } });
+                  
+                  chrome.runtime.sendMessage({ type: OPEN_MSG, background: bgMode });
+                  
+                  window.currentBlockMeta = blockMeta;
+                  window.currentAnswerKey = ANSWER_KEY;
+                  smState = 'WAITING_FOR_AI';
+                  break;
+              }
+              
+              case 'WAITING_FOR_AI': {
+                  logDiagnostic('AI', `Waiting up to 3 mins for ${aiChoice}...`);
+                  const deadline = Date.now() + 180000;
+                  let success = false;
+                  
+                  while (Date.now() < deadline) {
+                      await delay(2000);
+                      const stored = await new Promise(r => chrome.storage.local.get([window.currentAnswerKey, 'cqsBridgeStatus'], d => r(d)));
+                      if (stored[window.currentAnswerKey]) {
+                          const ansData = stored[window.currentAnswerKey];
+                          if (ansData.error) {
+                              logDiagnostic('AI', `Error: ${ansData.error}`);
+                              break;
+                          }
+                          const hasAnswers = Array.isArray(ansData.answers) && ansData.answers.length > 0;
+                          const hasRawText = ansData.rawText && ansData.rawText.length > 10;
+                          
+                          if (hasAnswers || hasRawText) {
+                              window.currentAiAnswers = hasAnswers ? ansData.answers : parseRawText(ansData.rawText);
+                              if (window.currentAiAnswers.length > 0) {
+                                  success = true;
+                              }
+                          }
+                          break;
+                      }
+                  }
+                  
+                  if (success) {
+                      logDiagnostic('AI', `Response obtained successfully.`);
+                      await chrome.storage.local.remove([window.currentAnswerKey]);
+                      smState = 'SELECTING_ANSWER';
+                  } else {
+                      logDiagnostic('AI', 'Timed out or failed. Falling back to Claude.');
+                      if (aiChoice !== 'claude') {
+                          isClaudeForced = true;
+                          smState = 'REQUESTING_AI';
+                      } else {
+                          smState = 'ERROR';
+                      }
+                  }
+                  break;
+              }
+              
+              case 'SELECTING_ANSWER': {
+                  logDiagnostic('MAYA', 'Applying answers to UI.');
+                  await applyWebUiAnswers(window.currentBlockMeta, window.currentAiAnswers, aiChoice);
+                  answered.set(currentQHash, true);
+                  await checkHonorCode();
+                  await delay(600);
+                  smState = 'NAVIGATING';
+                  break;
+              }
+              
+              case 'NAVIGATING': {
+                  logDiagnostic('MAYA', 'Attempting to click Submit/Next.');
+                  window.scrollTo(0, document.body.scrollHeight);
+                  await delay(1000);
+                  
+                  let actionTaken = null;
+                  if (isAdityaPlatform) {
+                      const btns = [...document.querySelectorAll('button')];
+                      const nextBtn = btns.find(b => b.innerText && b.innerText.trim() === 'Next');
+                      const submitBtn = btns.find(b => b.innerText && (b.innerText.includes('Submit') || b.innerText.includes('Finish')));
+                      
+                      if (nextBtn) {
+                          await interactAggressively(nextBtn);
+                          actionTaken = 'next';
+                      } else if (submitBtn) {
+                          await interactAggressively(submitBtn);
+                          actionTaken = 'submitted';
+                      }
+                  } else {
+                      const submitTexts = ['submit', 'submit quiz', 'submit exam', 'submit assignment'];
+                      let btn = null;
+                      const allButtons = document.querySelectorAll('button, [role="button"]');
+                      for (const b of allButtons) {
+                          const t = (b.innerText || '').toLowerCase().trim();
+                          if (submitTexts.includes(t)) { btn = b; break; }
+                      }
+                      if (btn) {
+                          await interactAggressively(btn);
+                          actionTaken = 'submitted';
+                      }
+                  }
+                  
+                  if (actionTaken === 'next') {
+                      logDiagnostic('MAYA', 'Next clicked. Proceeding to VERIFYING_NAVIGATION.');
+                      smState = 'VERIFYING_NAVIGATION';
+                  } else if (actionTaken === 'submitted') {
+                      logDiagnostic('MAYA', 'Submit clicked. Proceeding to COMPLETE.');
+                      smState = 'COMPLETE';
+                  } else {
+                      logDiagnostic('MAYA', 'Failed to find Next/Submit. Marking complete to prevent infinite loop.');
+                      smState = 'COMPLETE';
+                  }
+                  break;
+              }
+              
+              case 'VERIFYING_NAVIGATION': {
+                  logDiagnostic('MAYA', 'Polling for DOM change (max 8s)...');
+                  const didNavigate = await verifyNavigation(currentQHash);
+                  
+                  if (didNavigate) {
+                      logDiagnostic('MAYA', 'Navigation confirmed. Restarting for new question.');
+                      smState = 'READING_QUESTION';
+                  } else {
+                      retryCount++;
+                      if (retryCount >= MAX_RETRIES) {
+                          logDiagnostic('MAYA', 'Navigation timed out 3 times. Stopping to prevent loop.');
+                          smState = 'ERROR';
+                      } else {
+                          logDiagnostic('MAYA', `Navigation failed to change question. Retry ${retryCount}/${MAX_RETRIES}`);
+                          smState = 'NAVIGATING'; // Try clicking Next again
+                      }
+                  }
+                  break;
+              }
+          }
+      }
+      
+      if (smState === 'COMPLETE') {
+          const nextIndex = idx + 1;
+          if (nextIndex < total) {
+              const newState = { ...state, currentIndex: nextIndex };
+              await setState(newState);
+              const nextUrl = typeof state.quizUrls[nextIndex] === 'object' ? state.quizUrls[nextIndex].url : state.quizUrls[nextIndex];
+              location.href = nextUrl;
+          } else {
+              await clearState();
+              logDiagnostic('INIT', 'All quizzes complete!');
+              if (isAdityaPlatform) location.href = 'https://maya.adityauniversity.in/';
+              else location.href = `https://www.coursera.org/learn/${state.courseSlug}/home/assignments`;
+          }
+      }
+  }
+
+
 
   // ════════════════════════════════════════════════════════════════════════════
   //  PEER REVIEW AUTO-SOLVER

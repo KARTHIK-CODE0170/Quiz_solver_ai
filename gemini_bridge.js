@@ -64,56 +64,50 @@
 
         // Gemini uses Angular/Lit and rich-textarea.
         // Try the native execCommand which works best for rich editors when focused
-        const inserted = document.execCommand('insertText', false, task.prompt);
         
+        // Layered Injection
+        let inserted = false;
+        try {
+            inputEl.focus();
+            inserted = document.execCommand('insertText', false, task.prompt);
+        } catch (e) {}
+
         if (!inserted || !(inputEl.innerText || '').trim()) {
-            console.warn('[QuizAI Bridge] execCommand failed, falling back to innerHTML...');
-            inputEl.innerHTML = '<p>' + task.prompt.replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>') + '</p>';
+            console.warn('[QuizAI Bridge] execCommand failed, falling back to innerHTML layered injection...');
+            inputEl.innerHTML = '<p>' + task.prompt.replace(/
+
+/g, '</p><p>').replace(/
+/g, '<br>') + '</p>';
             const events = ['input', 'change', 'keyup'];
             for (const e of events) {
                 inputEl.dispatchEvent(new Event(e, { bubbles: true, composed: true }));
             }
         }
-
         await delay(800);
 
-        // Click Send aggressively
-        const sendSels = [
-            'button[aria-label*="Send message"]',
-            'button[aria-label*="Send"]',
-            'button[mattooltip*="Send"]',
-            '.send-button',
-            'button.action-button.send-button'
-        ];
-        
+        // Verified Dispatch with bounded retries
         let sendBtn = null;
-        for (let i = 0; i < 10; i++) {
-            for (const sel of sendSels) {
-                const btn = document.querySelector(sel);
-                if (btn && !btn.disabled && btn.getBoundingClientRect().width > 0) {
-                    sendBtn = btn;
-                    break;
-                }
+        let retries = 0;
+        while (retries < 10) {
+            sendBtn = document.querySelector('button[aria-label*="Send message"], button[aria-label*="Send"], button.send-button');
+            if (sendBtn && !sendBtn.disabled) {
+                console.log('[QuizAI Bridge] Clicking Send...');
+                sendBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+                sendBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+                sendBtn.click();
+                break;
             }
-            if (sendBtn) break;
-            
-            // Try to force state again
+            console.log('[QuizAI Bridge] Send button disabled or not found. Dispatched synthetic events to wake framework...');
             inputEl.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+            retries++;
             await delay(500);
         }
-
-        if (sendBtn) {
-            console.log('[QuizAI Bridge] Clicking Send...');
-            sendBtn.click();
-        } else {
-            console.warn('[QuizAI Bridge] Send button not found or disabled — pressing Enter natively');
-            const enterEvent = new KeyboardEvent('keydown', {
-                key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true, composed: true
-            });
-            inputEl.dispatchEvent(enterEvent);
+        
+        if (!sendBtn || sendBtn.disabled) {
+            console.warn('[QuizAI Bridge] Failed to enable send button. Firing native Enter.');
+            inputEl.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, which: 13, bubbles: true, composed: true }));
         }
-
-        console.log('[QuizAI Bridge] Message sent. Waiting for NEW response elements...');
+console.log('[QuizAI Bridge] Message sent. Waiting for NEW response elements...');
         await delay(3000);
 
         // Wait for a NEW response element to appear
