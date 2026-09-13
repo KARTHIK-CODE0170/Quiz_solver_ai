@@ -837,7 +837,8 @@
             logDiagnostic('MAYA', 'Next clicked. Proceeding to VERIFYING_NAVIGATION.');
             smState = 'VERIFYING_NAVIGATION';
           } else if (actionTaken === 'submitted') {
-            logDiagnostic('MAYA', 'Submit clicked. Proceeding to COMPLETE.');
+            logDiagnostic('MAYA', 'Submit clicked. Waiting 5s for submission to process...');
+            await delay(5000);
             smState = 'COMPLETE';
           } else {
             logDiagnostic('MAYA', 'Failed to find Next/Submit. Marking complete to prevent infinite loop.');
@@ -878,8 +879,9 @@
       } else {
         await clearState();
         logDiagnostic('INIT', 'All quizzes complete!');
-        if (isAdityaPlatform) location.href = 'https://maya.adityauniversity.in/';
-        else location.href = `https://www.coursera.org/learn/${state.courseSlug}/home/assignments`;
+        if (!isAdityaPlatform) {
+          location.href = `https://www.coursera.org/learn/${state.courseSlug}/home/assignments`;
+        }
       }
     }
   }
