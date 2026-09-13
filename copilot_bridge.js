@@ -106,41 +106,23 @@
             }));
         }
 
-        console.log('[QuizAI Bridge] Message sent. Waiting for NEW response elements...');
-        await delay(3000);
-
-        // Wait for a NEW response element to appear
-        const newEls = await waitFor(
-            () => {
-                const all = getAllResponseEls();
-                if (all.length > baselineCount) return all;
-                return null;
-            },
-            60000
-        );
-
-        if (!newEls) {
-            await storeError('Copilot did not generate a response in time. Try again.');
-            return;
-        }
-
-        console.log('[QuizAI Bridge] New response text detected.');
+        
+        console.log('[QuizAI Bridge] Message sent. Polling page for JSON response...');
 
         // Wait for Copilot's streaming to finish (stable text)
+        // We scan the ENTIRE body text to completely bypass React DOM selector brittleness.
         const responseText = await waitForStableText(() => {
-            const all = getAllResponseEls();
-            if (!all.length) return '';
-            const last = all[all.length - 1];
-            return (last.innerText || last.textContent || '').trim();
+            return document.body.innerText;
         }, 120000);
 
-        if (!responseText.trim()) {
+        if (!responseText || !responseText.trim()) {
             await storeError('Copilot response was empty. Try again.');
             return;
         }
 
         // Parse and store
         const { answers } = parseChatGPTResponse(responseText);
+
         
         await chrome.storage.local.set({
             [ANSWER_KEY]: {
