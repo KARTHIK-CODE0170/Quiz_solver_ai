@@ -4,6 +4,16 @@ const solveAllBtn = document.getElementById('solve-all-btn');
 const autoSolveBtn = document.getElementById('auto-solve-btn');
 const aiSelector = document.getElementById('ai-selector');
 const bgModeToggle = document.getElementById('bg-mode-toggle');
+const helpBtn = document.getElementById('help-btn');
+const helpOverlay = document.getElementById('help-overlay');
+const helpCloseBtn = document.getElementById('help-close-btn');
+
+// Help modal toggle
+helpBtn.addEventListener('click', () => helpOverlay.classList.add('visible'));
+helpCloseBtn.addEventListener('click', () => helpOverlay.classList.remove('visible'));
+helpOverlay.addEventListener('click', (e) => {
+    if (e.target === helpOverlay) helpOverlay.classList.remove('visible');
+});
 
 // Load settings
 chrome.storage.local.get(['preferredAI', 'backgroundMode'], (res) => {

@@ -25,6 +25,46 @@
               id="status-text">Ready</span></span>
         </div>
       </div>
+      <!-- Help Icon -->
+      <button class="help-btn" id="help-btn" title="How to use">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+          <line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- ── Help Modal Overlay ─────────────────────────────── -->
+    <div class="help-overlay" id="help-overlay">
+      <div class="help-modal">
+        <div class="help-modal-header">
+          <span class="help-modal-title">📖 How to Use</span>
+          <button class="help-close-btn" id="help-close-btn">&times;</button>
+        </div>
+
+        <div class="help-modal-body">
+          <!-- Gemini Warning -->
+          <div class="gemini-warning">
+            <span class="gemini-warning-icon">⚠️</span>
+            <span>This extension does <strong>NOT</strong> work with <strong>Google Gemini</strong>. Please use ChatGPT, Copilot, or Claude instead.</span>
+          </div>
+
+          <ol class="help-steps">
+            <li><strong>Open your course</strong> — Navigate to the Coursera or Aditya Maya assessment page in your browser.</li>
+            <li><strong>Choose your AI</strong> — In the popup, select your preferred AI from the dropdown (ChatGPT, Copilot, or Claude).</li>
+            <li><strong>Log into the AI</strong> — Make sure you're logged into the selected AI service in another tab.</li>
+            <li><strong>Click "Solve Current Page"</strong> — This solves only the quiz currently visible on the page.</li>
+            <li><strong>Or click "Auto-Solve All Tasks"</strong> — This runs the full pipeline and solves all quizzes automatically.</li>
+            <li><strong>Wait for completion</strong> — The extension will pick answers and submit them. Don't close the browser.</li>
+            <li><strong>Check results</strong> — Once done, review your submitted answers on the course page.</li>
+          </ol>
+
+          <div class="help-tip">
+            💡 <strong>Tip:</strong> Enable "Run silently in background" to let the solver work without switching tabs.
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- ── Actions ──────────────────────────────────────────── -->
